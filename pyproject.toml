@@ -41,7 +41,7 @@ torch = [
   "torchvision>=0.17,<1",
 ]
 smp = [
-  "segmentation-models-pytorch>=0.3.3,<0.5",
+  "segmentation-models-pytorch>=0.3.3,<0.6",
 ]
 transformers = [
   "transformers>=5.5,<6",
