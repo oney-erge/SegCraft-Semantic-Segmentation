@@ -71,7 +71,7 @@ dev = [
   "pytest>=9.0.3,<10",
   "build>=1.2,<2",
   "twine>=5.0,<7",
-  "packaging>=23.2,<25",
+  "packaging>=23.2,<27",
   "docutils>=0.18.1,<0.22",
   "rich>=13,<14",
 ]
