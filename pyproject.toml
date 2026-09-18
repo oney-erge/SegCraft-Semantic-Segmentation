@@ -73,7 +73,7 @@ dev = [
   "twine>=5.0,<7",
   "packaging>=23.2,<27",
   "docutils>=0.18.1,<0.22",
-  "rich>=13,<14",
+  "rich>=13,<16",
 ]
 
 [project.scripts]
