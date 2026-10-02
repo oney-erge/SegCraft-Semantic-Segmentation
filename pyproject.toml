@@ -31,7 +31,7 @@ dependencies = [
 Homepage = "https://github.com/oney-erge/SegCraft-Semantic-Segmentation"
 Repository = "https://github.com/oney-erge/SegCraft-Semantic-Segmentation"
 Issues = "https://github.com/oney-erge/SegCraft-Semantic-Segmentation/issues"
-Changelog = "https://github.com/oney-erge/SegCraft-Semantic-Segmentation/blob/master/CHANGELOG.md"
+Changelog = "https://github.com/oney-erge/SegCraft-Semantic-Segmentation/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 torch = [

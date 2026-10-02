@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-labelledby="t">
+  <title id="t">SegCraft logo: a street scene split into colour-coded segmentation regions</title>
+  <defs>
+    <clipPath id="tile"><rect x="4" y="4" width="120" height="120" rx="28"/></clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <!-- sky -->
+    <rect x="0" y="0" width="128" height="64" fill="#60a5fa"/>
+    <!-- buildings -->
+    <path d="M0 64V38h30v-10h22v36z" fill="#8b5cf6"/>
+    <path d="M76 64V20h28v14h24v30z" fill="#a78bfa"/>
+    <!-- vegetation -->
+    <path d="M52 64V50q8-12 18 0v14z" fill="#34d399"/>
+    <!-- road -->
+    <path d="M0 64h128v64H0z" fill="#475569"/>
+    <!-- car -->
+    <path d="M30 98q0-14 10-16l8-8h26l10 8q10 2 10 16v6H30z" fill="#f59e0b"/>
+    <path d="M52 80l5-5h14l6 5z" fill="#fde68a"/>
+    <!-- region seams -->
+    <path d="M0 64h128" stroke="#0f172a" stroke-opacity=".35" stroke-width="2"/>
+  </g>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="none" stroke="#0f172a" stroke-opacity=".25" stroke-width="2"/>
+</svg>

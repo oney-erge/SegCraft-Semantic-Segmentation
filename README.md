@@ -1,9 +1,57 @@
-# SegCraft
+<p align="center">
+  <img src="assets/segcraft-logo.svg" width="96" height="96" alt="SegCraft logo" />
+</p>
+
+<h1 align="center">SegCraft</h1>
+
+<p align="center">
+  <strong>Train, evaluate, and run semantic segmentation on images and video from one YAML config.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/oney-erge/SegCraft-Semantic-Segmentation/actions/workflows/ci.yml"><img src="https://github.com/oney-erge/SegCraft-Semantic-Segmentation/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
+  <a href="https://pypi.org/project/segcraft/"><img src="https://img.shields.io/pypi/v/segcraft.svg" alt="PyPI version" /></a>
+  <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license" /></a>
+  <img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+" />
+</p>
+
+<p align="center">
+  <img src="assets/segcraft-gpu-demo.gif" alt="SegCraft GPU demo: original dashcam video beside semantic segmentation overlay" width="860" />
+</p>
 
 SegCraft is a config-first semantic segmentation toolkit for training,
-evaluating, and running image/video prediction from the same YAML setup.
+evaluating, and running image/video prediction from the same YAML setup. It is
+alpha software, so the Python API and config schema can still change.
 
-![SegCraft GPU demo: original dashcam video beside semantic segmentation overlay](assets/segcraft-gpu-demo.gif)
+## Quick start
+
+```bash
+pip install "segcraft[web]"
+segcraft-web          # then open http://127.0.0.1:8000
+```
+
+Upload a video or paste a YouTube URL, choose a preset, and download the
+original, overlay, and side-by-side comparison videos. On an NVIDIA GPU, install
+the CUDA build of PyTorch first (see [Install](#install)). With the default
+`runtime.device: auto`, SegCraft falls back to the CPU when it finds no GPU.
+
+From a checkout, `.\run.bat` (Windows), `./run.command` (macOS), or `./run.sh`
+(Linux) sets up a pinned `uv`, builds the environment, and opens the app in your
+browser.
+
+## Why SegCraft
+
+- **One config for the whole workflow.** Training, evaluation, and prediction
+  read the same YAML, and configs merge in a fixed order: base, optional preset,
+  optional local overrides.
+- **Three model backends behind one interface.** Choose TorchVision,
+  [segmentation-models-pytorch](https://github.com/qubvel-org/segmentation_models.pytorch),
+  or Hugging Face SegFormer models by name in the config, with presets for
+  Cityscapes, ADE20K, and PASCAL VOC.
+- **Video in, video out.** Prediction writes `original.mp4`, `overlay.mp4`, and a
+  side-by-side `comparison.mp4`, plus a `summary.json`.
+- **Three ways to drive it.** Preset names work the same in the CLI, the Python
+  API, and the web app, and `segcraft doctor` reports what Torch and CUDA can see.
 
 ## Install
 
