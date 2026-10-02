@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/segcraft-logo.svg" width="96" height="96" alt="SegCraft logo" />
+  <img src="https://raw.githubusercontent.com/oney-erge/SegCraft-Semantic-Segmentation/main/assets/segcraft-logo.svg" width="96" height="96" alt="SegCraft logo" />
 </p>
 
 <h1 align="center">SegCraft</h1>
@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/segcraft-gpu-demo.gif" alt="SegCraft GPU demo: original dashcam video beside semantic segmentation overlay" width="860" />
+  <img src="https://raw.githubusercontent.com/oney-erge/SegCraft-Semantic-Segmentation/main/assets/segcraft-gpu-demo.gif" alt="SegCraft GPU demo: original dashcam video beside semantic segmentation overlay" width="860" />
 </p>
 
 SegCraft is a config-first semantic segmentation toolkit for training,
