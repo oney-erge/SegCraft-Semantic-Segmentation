@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "segcraft"
-version = "0.1.5"
-description = "Config-driven semantic segmentation framework"
+version = "0.1.6"
+description = "A config-first toolkit for semantic segmentation training, evaluation, and image/video inference."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
