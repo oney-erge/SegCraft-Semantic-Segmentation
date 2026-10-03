@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## [0.1.6] - 2026-10-03
+
+### Fixed
+- The README logo and demo GIF were broken on the PyPI project page because they used relative paths. They
+  now use absolute URLs.
+- The Changelog link in the package metadata pointed at a `master` branch that does not exist. It now points
+  at `main`.
+
+### Changed
+- The package supports NumPy 2.x and OpenCV 5.0 (`numpy>=1.26,<3.0`, `opencv-python>=4.8,<5.1`), and
+  `rich` was updated to 15. The lock file moves to NumPy 2.2.6, OpenCV 5.0.0.93, torchvision 0.29.0, and
+  urllib3 2.8.0 (GHSA-8988-9cw3-xx77).
+- The PyPI summary now matches the repository description.
+- README: logo, badges, a short quick start, and a demo GIF reduced from 19.8 MB to 5.3 MB.
+- The install and run lifecycle of the launchers was hardened, and launcher readiness handling improved.
+- The release workflow can complete a tagged release again after a partial failure, uses Buildx for
+  release attestations, and checks out the repository before creating the GitHub release.
+- CI cancels superseded runs, caches pip, and runs with read-only repository permissions. Dependabot is
+  configured with grouped updates.
+
 ## [0.1.5] - 2026-08-25
 
 ### Added
