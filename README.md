@@ -213,3 +213,7 @@ Configure the PyPI/TestPyPI publisher for owner `oney-erge`, repository
 `pypi`. A `v*` tag publishes the package, container image, distribution files,
 and GitHub release. A manual run can publish to TestPyPI without making a
 release.
+
+## Author
+
+Built by [Oney Erge](https://oneyerge.com).
