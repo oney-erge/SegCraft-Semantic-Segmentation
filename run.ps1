@@ -32,11 +32,14 @@ function Ensure-Uv {
 }
 function Wait-Ready {
   for ($i = 0; $i -lt 120; $i++) {
-    try { Invoke-RestMethod -Uri "$Url/health" -TimeoutSec 2 | Out-Null; return $true } catch { Start-Sleep -Milliseconds 500 }
+    if (Test-Ready) { return $true }
+    Start-Sleep -Milliseconds 500
   }
   return $false
 }
-function Test-Ready { try { Invoke-RestMethod -Uri "$Url/health" -TimeoutSec 2 | Out-Null; return $true } catch { return $false } }
+# Port 8000 is also LocalDeploy's default, and it answers /health too, so "something answered" is not enough:
+# only SegCraft says service = segcraft. Otherwise this launcher reported SegCraft as already running and opened LocalDeploy.
+function Test-Ready { try { return ((Invoke-RestMethod -Uri "$Url/health" -TimeoutSec 2).service -eq "segcraft") } catch { return $false } }
 
 # The locked PyTorch is the PyPI wheel, which is CPU-only on Windows, so an NVIDIA GPU would never be used.
 # On a machine with an NVIDIA GPU this picks the PyTorch CUDA index that matches the driver. It returns

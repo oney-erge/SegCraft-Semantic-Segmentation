@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Fixed
+- The Windows launcher decided SegCraft was already running whenever anything answered `/health` on port 8000.
+  LocalDeploy uses the same port and path, so with LocalDeploy running it printed "SegCraft is already running"
+  and opened LocalDeploy. `/health` now includes `"service": "segcraft"` and the launcher checks it.
 - `segcraft --version` failed with "unrecognized arguments". It now prints the installed version, and
   `segcraft.__version__` is available.
 - `segcraft-web --help` started the server and opened a browser instead of printing help, because the command

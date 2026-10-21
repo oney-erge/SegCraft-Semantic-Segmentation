@@ -42,7 +42,8 @@ def create_app():
 
     @app.get("/health")
     def health() -> dict[str, str]:
-        return {"status": "ok"}
+        # "service" lets a launcher tell SegCraft from another local tool that also uses port 8000.
+        return {"status": "ok", "service": "segcraft"}
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
