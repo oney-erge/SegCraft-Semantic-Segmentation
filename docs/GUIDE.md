@@ -56,8 +56,11 @@ For development from a checkout:
 uv sync --frozen --extra web --extra dev
 ```
 
-For NVIDIA GPUs, install the CUDA-enabled PyTorch wheel that matches your
-system from the PyTorch install page, then run:
+For NVIDIA GPUs, the Windows launcher (`run.bat`) installs the CUDA build of
+PyTorch that matches your driver (cu130 for CUDA 13 drivers, cu126 for 12.6 and
+newer); `SEGCRAFT_CPU_ONLY=1` skips it and `SEGCRAFT_TORCH_INDEX_URL` picks a
+different PyTorch index. With `pip` or `uv` on your own, install the CUDA-enabled
+PyTorch wheel that matches your system from the PyTorch install page. Then run:
 
 ```bash
 segcraft doctor

@@ -28,6 +28,10 @@ jobs:
           $errors = $null
           [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path run.ps1), [ref]$null, [ref]$errors)
           if ($errors) { $errors | Format-List; exit 1 }
+      - if: runner.os == 'Windows'
+        name: Launcher helpers under Windows PowerShell 5.1
+        shell: powershell
+        run: ./scripts/test-launcher-helpers.ps1
 
   test:
     runs-on: ubuntu-latest
