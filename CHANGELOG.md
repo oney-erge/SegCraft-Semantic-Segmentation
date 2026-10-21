@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Security
+- Moved Pillow to 13.0 on Python 3.11 and newer (nine advisories, fixed in 13.0.0) and certifi to 2026.10.19.
+  Pillow 13 needs Python 3.11, so Python 3.10 stays on the 12.3 line, which has no fix for these advisories.
+
 ### Fixed
 - The Windows launcher decided SegCraft was already running whenever anything answered `/health` on port 8000.
   LocalDeploy uses the same port and path, so with LocalDeploy running it printed "SegCraft is already running"
