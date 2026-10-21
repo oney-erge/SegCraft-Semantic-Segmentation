@@ -38,6 +38,30 @@ function Wait-Ready {
 }
 function Test-Ready { try { Invoke-RestMethod -Uri "$Url/health" -TimeoutSec 2 | Out-Null; return $true } catch { return $false } }
 
+# The locked PyTorch is the PyPI wheel, which is CPU-only on Windows, so an NVIDIA GPU would never be used.
+# On a machine with an NVIDIA GPU this picks the PyTorch CUDA index that matches the driver. It returns
+# $null (keep the CPU build) with no GPU, when the driver is too old, or when SEGCRAFT_CPU_ONLY=1.
+# SEGCRAFT_TORCH_INDEX_URL overrides the choice. Never fails the install.
+function Get-CudaTorchIndex {
+  if ($env:SEGCRAFT_CPU_ONLY -eq "1") { return $null }
+  if ($env:SEGCRAFT_TORCH_INDEX_URL) { return $env:SEGCRAFT_TORCH_INDEX_URL }
+  if (-not (Get-Command nvidia-smi -ErrorAction SilentlyContinue)) { return $null }
+  try {
+    $smi = & nvidia-smi 2>$null
+    $match = ($smi | Select-String -Pattern 'CUDA Version:\s*([0-9]+)\.([0-9]+)').Matches
+    if ($match.Count -eq 0) { return $null }
+    $version = [double]("{0}.{1}" -f $match[0].Groups[1].Value, $match[0].Groups[2].Value)
+    if ($version -ge 13.0) { return "https://download.pytorch.org/whl/cu130" }
+    if ($version -ge 12.6) { return "https://download.pytorch.org/whl/cu126" }
+  } catch {}
+  return $null
+}
+function Get-LockedTorchVersion {
+  $match = [regex]::Match((Get-Content -LiteralPath "uv.lock" -Raw), '(?m)^name = "torch"\r?\nversion = "([^"]+)"')
+  if ($match.Success) { return $match.Groups[1].Value }
+  return $null
+}
+
 if ($Action -in @("docker", "stop", "logs")) {
   $docker = Get-Command docker -ErrorAction SilentlyContinue
   $engineRunning = $false
@@ -68,12 +92,38 @@ if ($Action -eq "doctor") {
 Enter-InstallLock
 Assert-InstallFreeSpace -Path $PSScriptRoot -RequiredGB 3
 if (-not $uv) { $uv = Ensure-Uv }
-$syncArgs = @("sync", "--frozen", "--extra", "web")
-if ($Action -eq "repair") { $syncArgs += "--reinstall" }
-Invoke-InstallRetry "dependency synchronization" {
-  $output = & $uv @syncArgs 2>&1
-  if ($LASTEXITCODE -ne 0) { throw "uv sync failed: $($output -join [Environment]::NewLine)" }
-  $output | Write-Host
+Remove-IncompleteVenv $PSScriptRoot
+$python = ".\.venv\Scripts\python.exe"
+$cudaIndex = Get-CudaTorchIndex
+# uv sync restores the locked CPU wheel, so once the CUDA build is in, sync only runs when the lock or the
+# chosen index changes (or on "repair"). Without an NVIDIA GPU nothing changes: sync runs on every launch.
+$marker = ".\.venv\.segcraft-cuda"
+$fingerprint = "$((Get-FileHash -LiteralPath uv.lock -Algorithm SHA256).Hash)|$cudaIndex"
+$cudaCurrent = $cudaIndex -and $Action -ne "repair" -and (Test-Path -LiteralPath $python) -and
+  (Test-Path -LiteralPath $marker) -and ((Get-Content -LiteralPath $marker -Raw).Trim() -eq $fingerprint)
+if ($cudaCurrent) {
+  Write-Host "Dependencies are already up to date (CUDA PyTorch)."
+} else {
+  $syncArgs = @("sync", "--frozen", "--extra", "web")
+  if ($Action -eq "repair") { $syncArgs += "--reinstall" }
+  Invoke-InstallRetry "dependency synchronization" {
+    $result = Invoke-InstallNative $uv $syncArgs
+    if ($result.ExitCode -ne 0) { throw "uv sync failed: $($result.Output -join [Environment]::NewLine)" }
+    $result.Output | Write-Host
+  }
+  # The sync put the locked CPU wheel back, so any earlier "CUDA installed" marker is stale.
+  Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
+  if ($cudaIndex) {
+    Write-Host "==> NVIDIA GPU found: installing the CUDA build of PyTorch (a large download the first time)" -ForegroundColor Cyan
+    $lockedTorch = Get-LockedTorchVersion
+    $torchSpec = if ($lockedTorch) { "torch==$lockedTorch" } else { "torch" }
+    Invoke-InstallRetry "CUDA PyTorch installation" {
+      $result = Invoke-InstallNative $uv @("pip", "install", "--python", $python, $torchSpec, "torchvision", "--index-url", $cudaIndex, "--reinstall-package", "torch", "--reinstall-package", "torchvision")
+      if ($result.ExitCode -ne 0) { throw "CUDA PyTorch installation failed: $($result.Output -join [Environment]::NewLine)" }
+      $result.Output | Write-Host
+    }
+    Set-Content -LiteralPath $marker -Value $fingerprint -NoNewline
+  }
 }
 Complete-Install
 if (Test-Ready) {

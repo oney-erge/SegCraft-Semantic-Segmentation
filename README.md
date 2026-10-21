@@ -42,9 +42,11 @@ From a checkout, the launchers set up the environment and open the app:
 ./run.sh       # Linux; macOS: ./run.command
 ```
 
-On Windows, use `.\run.bat`. For a GPU, install the CUDA-enabled PyTorch wheel
-that matches your system before installing or launching SegCraft, then run
-`segcraft doctor` to confirm what Torch and CUDA can see.
+On Windows, use `.\run.bat`. When it finds an NVIDIA GPU it installs the matching
+CUDA build of PyTorch for you (a large download the first time; set
+`SEGCRAFT_CPU_ONLY=1` to keep the CPU build). With `pip`, install the
+CUDA-enabled PyTorch wheel that matches your system first. Run `segcraft doctor`
+to confirm what Torch and CUDA can see.
 
 ## What it does
 

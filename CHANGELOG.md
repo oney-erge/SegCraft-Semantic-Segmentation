@@ -10,6 +10,13 @@
 - When port 8000 is taken (LocalDeploy also defaults to it), `segcraft-web` used to stop with a raw uvicorn error.
   Without an explicit port it now uses the next free one and says so; an explicit busy port exits with a clear
   message and a suggested `--port`.
+- The Windows launcher (`run.bat`) failed on every fresh clone: uv prints ordinary progress such as
+  "Using CPython 3.12" on stderr, and Windows PowerShell 5.1 treated that as a fatal error. It also left a
+  half-built `.venv` that made every retry fail. Both are fixed, and CI now runs the launcher helpers under
+  Windows PowerShell 5.1.
+- The Windows launcher always installed the locked CPU-only PyTorch wheel, so an NVIDIA GPU was never used
+  ("CPU-only Torch build; CUDA unavailable"). When an NVIDIA GPU is found it now installs the matching CUDA
+  build (cu130 or cu126, chosen from the driver) and keeps it between launches. `SEGCRAFT_CPU_ONLY=1` opts out.
 
 ## [0.1.6] - 2026-10-03
 
