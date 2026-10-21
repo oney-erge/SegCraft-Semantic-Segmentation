@@ -36,7 +36,8 @@ Changelog = "https://github.com/oney-erge/SegCraft-Semantic-Segmentation/blob/ma
 [project.optional-dependencies]
 torch = [
   "numpy>=1.26,<3.0",
-  "pillow>=12.3,<13",
+  "pillow>=13.0,<14; python_version >= '3.11'",
+  "pillow>=12.3,<13; python_version < '3.11'",
   "torch>=2.2,<3",
   "torchvision>=0.17,<1",
 ]
@@ -57,7 +58,8 @@ app = [
 ]
 web = [
   "numpy>=1.26,<3.0",
-  "pillow>=12.3,<13",
+  "pillow>=13.0,<14; python_version >= '3.11'",
+  "pillow>=12.3,<13; python_version < '3.11'",
   "torch>=2.2,<3",
   "torchvision>=0.17,<1",
   "transformers>=5.5,<6",
