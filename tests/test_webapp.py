@@ -119,3 +119,56 @@ def test_run_job_marks_prediction_cancellation(monkeypatch):
         assert JOBS["job1"]["status"] == "canceled"
         assert JOBS["job1"]["cancel_requested"] is False
         assert JOBS["job1"]["progress"]["stage"] == "canceled"
+
+
+def test_web_help_prints_usage_and_does_not_start_a_server(monkeypatch, capsys):
+    import pytest
+    from segcraft import webapp
+
+    started = []
+    monkeypatch.setattr("uvicorn.run", lambda *args, **kwargs: started.append(kwargs))
+
+    with pytest.raises(SystemExit) as exit_info:
+        webapp.main(["--help"])
+
+    assert exit_info.value.code == 0
+    assert "--port" in capsys.readouterr().out
+    assert started == []
+
+
+def test_web_main_honours_port_and_no_browser_flags(monkeypatch):
+    from segcraft import webapp
+
+    started = []
+    monkeypatch.delenv("SEGCRAFT_PORT", raising=False)
+    monkeypatch.setattr(webapp, "port_in_use", lambda host, port: False)
+    monkeypatch.setattr("uvicorn.run", lambda *args, **kwargs: started.append(kwargs))
+    opened = []
+    monkeypatch.setattr(webapp.webbrowser, "open", lambda url: opened.append(url))
+
+    webapp.main(["--port", "8123", "--no-browser"])
+
+    assert started == [{"factory": True, "host": "127.0.0.1", "port": 8123}]
+    assert opened == []
+
+
+def test_default_port_falls_back_to_the_next_free_one(monkeypatch, capsys):
+    from segcraft import webapp
+
+    monkeypatch.setattr(webapp, "port_in_use", lambda host, port: port in {8000, 8001})
+
+    assert webapp.choose_port("127.0.0.1", 8000, explicit=False) == 8002
+    assert "Port 8000 is already in use; using 8002" in capsys.readouterr().out
+
+
+def test_explicit_busy_port_exits_with_a_clear_message(monkeypatch):
+    import pytest
+    from segcraft import webapp
+
+    monkeypatch.setattr(webapp, "port_in_use", lambda host, port: True)
+
+    with pytest.raises(SystemExit) as exit_info:
+        webapp.choose_port("127.0.0.1", 8000, explicit=True)
+
+    assert "Port 8000 is already in use" in str(exit_info.value)
+    assert "--port 8001" in str(exit_info.value)
