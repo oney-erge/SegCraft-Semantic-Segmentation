@@ -31,7 +31,7 @@ def test_webapp_health_reports_ready():
     response = TestClient(create_app()).get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {"status": "ok", "service": "segcraft"}
 
 
 def test_webapp_runtime_endpoint_loads():
