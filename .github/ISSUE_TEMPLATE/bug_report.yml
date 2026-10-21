@@ -1,0 +1,57 @@
+name: Bug report
+description: Something in SegCraft does not work as described.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: What did you run, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: how
+    attributes:
+      label: How are you running SegCraft?
+      options:
+        - Launcher (run.bat, run.sh, or run.command)
+        - pip install segcraft
+        - Source checkout
+        - Docker
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does it fail?
+      options:
+        - Web app
+        - segcraft predict
+        - segcraft train or evaluate
+        - segcraft validate or doctor
+        - Python API
+        - Installation or launcher
+        - Other
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11, macOS 15, or Ubuntu 24.04
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`segcraft doctor` output"
+      description: Shows the Python, Torch, CUDA, and GPU state. Remove paths you do not want to share.
+      render: text
+  - type: input
+    id: preset
+    attributes:
+      label: Preset and command
+      placeholder: "segcraft predict --preset cityscapes_video"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or error
+      description: Remove private paths, URLs, and video contents.
+      render: text
