@@ -1,3 +1,6 @@
+import pytest
+
+import segcraft
 from segcraft.cli.main import build_parser, resolve_config_path
 from segcraft.config.loader import list_available_presets, load_and_validate_config
 
@@ -48,3 +51,11 @@ def test_cli_accepts_doctor_mode():
     args = build_parser().parse_args(["doctor"])
 
     assert args.mode == "doctor"
+
+
+def test_cli_version_flag_reports_the_package_version(capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        build_parser().parse_args(["--version"])
+
+    assert exit_info.value.code == 0
+    assert capsys.readouterr().out.strip() == f"segcraft {segcraft.__version__}"

@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator
 
-from segcraft import evaluate, load_config, predict, train
+from segcraft import __version__, evaluate, load_config, predict, train
 from segcraft.runtime import collect_runtime_diagnostics, format_runtime_diagnostics
 
 
@@ -47,6 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional machine-local override YAML (applied if file exists).",
     )
     parser.add_argument("--print-config", action="store_true")
+    parser.add_argument("--version", action="version", version=f"segcraft {__version__}")
     return parser
 
 

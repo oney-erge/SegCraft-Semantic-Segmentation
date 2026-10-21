@@ -1,9 +1,11 @@
 """Minimal FastAPI app for running SegCraft video prediction jobs."""
 
+import argparse
 import copy
 from html import escape
 import os
 import shutil
+import socket
 import threading
 import time
 import urllib.request
@@ -12,6 +14,7 @@ import webbrowser
 from pathlib import Path
 from typing import Any
 
+from segcraft import __version__
 from segcraft.config.loader import list_available_presets, load_and_validate_config
 from segcraft.cli.main import resolve_config_path
 from segcraft.prediction import PredictionCancelled, run_prediction
@@ -461,7 +464,54 @@ def _preset_options_html() -> str:
     return "\n".join(options)
 
 
-def main() -> None:
+def build_web_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="segcraft-web",
+        description="Start the SegCraft web app for video prediction.",
+        epilog=(
+            "Defaults come from SEGCRAFT_HOST (127.0.0.1) and SEGCRAFT_PORT (8000). "
+            "When no port is given and 8000 is busy, the next free port is used."
+        ),
+    )
+    parser.add_argument("--host", default=None, help="Address to listen on (default: 127.0.0.1).")
+    parser.add_argument("--port", type=int, default=None, help="Port to listen on (default: 8000).")
+    parser.add_argument("--no-browser", action="store_true", help="Do not open the app in a browser.")
+    parser.add_argument("--version", action="version", version=f"segcraft {__version__}")
+    return parser
+
+
+def port_in_use(host: str, port: int) -> bool:
+    """True when something already accepts connections on host:port."""
+    probe_host = "127.0.0.1" if host in {"0.0.0.0", ""} else "::1" if host == "::" else host
+    try:
+        with socket.create_connection((probe_host, port), timeout=0.3):
+            return True
+    except OSError:
+        return False
+
+
+def choose_port(host: str, port: int, *, explicit: bool, attempts: int = 10) -> int:
+    """Return a port to serve on, or exit with a clear message.
+
+    An explicitly requested port is never changed silently. The default port may be
+    taken by another local tool (LocalDeploy also defaults to 8000), so then the next
+    free port is used and reported.
+    """
+    if not port_in_use(host, port):
+        return port
+    if explicit:
+        raise SystemExit(
+            f"Port {port} is already in use. Pick another with --port, for example: segcraft-web --port {port + 1}"
+        )
+    for candidate in range(port + 1, port + attempts + 1):
+        if not port_in_use(host, candidate):
+            print(f"Port {port} is already in use; using {candidate} instead.")
+            return candidate
+    raise SystemExit(f"Ports {port}-{port + attempts} are all in use. Pick one with --port.")
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = build_web_parser().parse_args(argv)
     try:
         import uvicorn
     except ModuleNotFoundError as exc:
@@ -469,12 +519,15 @@ def main() -> None:
             f"The web app requires optional dependencies. {INSTALL_HINTS['app']}"
         ) from exc
 
-    host = os.getenv("SEGCRAFT_HOST", "127.0.0.1")
-    port = int(os.getenv("SEGCRAFT_PORT", "8000"))
+    host = args.host or os.getenv("SEGCRAFT_HOST", "127.0.0.1")
+    explicit_port = args.port is not None or "SEGCRAFT_PORT" in os.environ
+    port = args.port if args.port is not None else int(os.getenv("SEGCRAFT_PORT", "8000"))
+    port = choose_port(host, port, explicit=explicit_port)
     browse_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
     url = f"http://{browse_host}:{port}"
 
-    if os.getenv("SEGCRAFT_OPEN_BROWSER", "1").lower() not in {"0", "false", "no"}:
+    open_browser = not args.no_browser and os.getenv("SEGCRAFT_OPEN_BROWSER", "1").lower() not in {"0", "false", "no"}
+    if open_browser:
         def open_when_ready() -> None:
             for _ in range(60):
                 try:

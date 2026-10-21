@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+- `segcraft --version` failed with "unrecognized arguments". It now prints the installed version, and
+  `segcraft.__version__` is available.
+- `segcraft-web --help` started the server and opened a browser instead of printing help, because the command
+  took no arguments. It now accepts `--host`, `--port`, `--no-browser` and `--version`.
+- When port 8000 is taken (LocalDeploy also defaults to it), `segcraft-web` used to stop with a raw uvicorn error.
+  Without an explicit port it now uses the next free one and says so; an explicit busy port exits with a clear
+  message and a suggested `--port`.
+
 ## [0.1.6] - 2026-10-03
 
 ### Fixed
