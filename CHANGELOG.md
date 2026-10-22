@@ -2,14 +2,16 @@
 
 ## Unreleased
 
+## [0.1.7] - 2026-10-22
+
 ### Changed
 - SegCraft now requires Python 3.11 or newer. Python 3.10 reaches end of life this month, and the Pillow
   release that fixes nine published advisories (13.0.0) does not support it, so a 3.10 install could not be
   patched. The test suite and the Docker image only ever ran on 3.11. `pip` on 3.10 keeps installing 0.1.6.
 
 ### Security
-- Moved Pillow to 13.0 on Python 3.11 and newer (nine advisories, fixed in 13.0.0) and certifi to 2026.10.19.
-  Pillow 13 needs Python 3.11, so Python 3.10 stays on the 12.3 line, which has no fix for these advisories.
+- Moved Pillow to 13.0 (nine advisories, fixed in 13.0.0) and certifi to 2026.10.19. Pillow 13 needs Python 3.11,
+  which is why the minimum version changed.
 
 ### Fixed
 - The Windows launcher decided SegCraft was already running whenever anything answered `/health` on port 8000.
