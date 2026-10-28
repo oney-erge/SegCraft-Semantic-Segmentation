@@ -68,7 +68,7 @@ function Get-LockedTorchVersion {
 if ($Action -in @("docker", "stop", "logs")) {
   $docker = Get-Command docker -ErrorAction SilentlyContinue
   $engineRunning = $false
-  if ($docker) { docker info *> $null; $engineRunning = ($LASTEXITCODE -eq 0) }
+  if ($docker) { $null = Invoke-NativeQuiet docker @("info"); $engineRunning = ($LASTEXITCODE -eq 0) }
   if ($Action -eq "stop" -and -not $engineRunning) { Write-Host "The native server runs in the foreground. Press Ctrl+C in its terminal to stop it."; exit 0 }
   if ($Action -eq "logs" -and -not $engineRunning) { Write-Host "The native server writes logs to its foreground terminal."; exit 0 }
   if (-not $docker) { throw "Docker is not installed." }
