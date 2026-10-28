@@ -1,0 +1,14 @@
+# zizmor (https://docs.zizmor.sh) settings, checked in CI.
+rules:
+  # The Dependabot auto-merge caller runs on workflow_run by design: it never
+  # checks out or runs pull request code, only calls the GitHub API.
+  dangerous-triggers:
+    ignore:
+      - dependabot-automerge.yml
+  unpinned-uses:
+    config:
+      policies:
+        # Shared workflows from the owner's own .github repository track main on
+        # purpose, so a fix there applies to every repository at once.
+        "oney-erge/*": any
+        "*": hash-pin
