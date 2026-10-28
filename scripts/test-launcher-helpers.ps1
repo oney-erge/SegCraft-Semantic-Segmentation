@@ -20,7 +20,15 @@ Assert-That ($ErrorActionPreference -eq "Stop") "the caller's ErrorActionPrefere
 $clean = Invoke-InstallNative "cmd.exe" @("/c", "echo fine & exit 0")
 Assert-That ($clean.ExitCode -eq 0) "a successful command returns exit code 0"
 
-# 2. An interrupted setup's .venv (no Python inside) is removed; a working one is never touched.
+# 2. A quiet probe drops stderr without failing and leaves the exit code in $LASTEXITCODE.
+$quiet = Invoke-NativeQuiet "cmd.exe" @("/c", "echo engine not running 1>&2 & exit 1")
+Assert-That ($LASTEXITCODE -eq 1) "a quiet probe keeps the exit code (got $LASTEXITCODE)"
+Assert-That ($quiet.Count -eq 0) "a quiet probe drops stderr"
+$listed = Invoke-NativeQuiet "cmd.exe" @("/c", "echo id-123 & exit 0")
+Assert-That (($listed -join " ") -match "id-123") "a quiet probe returns stdout"
+Assert-That ($ErrorActionPreference -eq "Stop") "the caller's ErrorActionPreference is restored after a probe"
+
+# 3. An interrupted setup's .venv (no Python inside) is removed; a working one is never touched.
 $scratch = Join-Path ([IO.Path]::GetTempPath()) ("launcher-helper-test-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $scratch | Out-Null
 try {
