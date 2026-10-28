@@ -21,15 +21,15 @@ on:
         type: string
 
 permissions:
-  contents: write
-  id-token: write
-  packages: write
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.11'
@@ -64,6 +64,8 @@ jobs:
 
   publish-testpypi:
     needs: build
+    permissions:
+      id-token: write
     if: github.event_name == 'workflow_dispatch' && inputs.repository == 'testpypi'
     runs-on: ubuntu-latest
     environment: testpypi
@@ -78,6 +80,8 @@ jobs:
 
   publish-pypi:
     needs: build
+    permissions:
+      id-token: write
     if: (github.event_name == 'workflow_dispatch' && inputs.repository == 'pypi') || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: pypi
@@ -90,12 +94,17 @@ jobs:
 
   publish-container:
     needs: build
+    permissions:
+      contents: read
+      packages: write
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.repository == 'release')
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
@@ -120,6 +129,8 @@ jobs:
 
   github-release:
     needs: [build, publish-pypi, publish-container]
+    permissions:
+      contents: write
     if: >-
       always() && needs.build.result == 'success' &&
       needs.publish-container.result == 'success' &&
@@ -131,6 +142,8 @@ jobs:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dist
