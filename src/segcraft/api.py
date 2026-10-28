@@ -6,10 +6,10 @@ from pathlib import Path
 from typing import Any, Dict
 
 from .config.loader import (
-    list_available_presets,
     load_and_validate_config,
     load_config_object as load_typed_config,
 )
+from .config.loader import list_available_presets as list_available_presets
 from .config.schema import SegCraftConfig
 from .engine import evaluate as run_evaluate
 from .engine import predict as run_predict
@@ -17,7 +17,7 @@ from .engine import train as run_train
 
 
 def load_config(
-    config_path: str | Path,
+    config_path: str | Path | None = None,
     preset_path: str | Path | None = None,
     local_path: str | Path | None = None,
 ) -> Dict[str, Any]:
@@ -26,7 +26,7 @@ def load_config(
 
 
 def load_config_object(
-    config_path: str | Path,
+    config_path: str | Path | None = None,
     preset_path: str | Path | None = None,
     local_path: str | Path | None = None,
 ) -> SegCraftConfig:

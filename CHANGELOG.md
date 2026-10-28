@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+- An explicitly requested local override now fails if the file is missing,
+  instead of silently running with different settings. The CLI still discovers
+  `configs/local.yaml` automatically when it exists.
+- The Python configuration API can use the packaged base configuration without
+  a source checkout; its README and guide examples now work with an installation.
+
 ## [0.1.7] - 2026-10-22
 
 ### Changed

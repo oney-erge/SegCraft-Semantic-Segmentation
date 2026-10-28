@@ -17,9 +17,7 @@
   <img src="https://raw.githubusercontent.com/oney-erge/SegCraft-Semantic-Segmentation/main/assets/segcraft-gpu-demo.gif" alt="SegCraft GPU demo: original dashcam video beside semantic segmentation overlay" width="860" />
 </p>
 
-SegCraft uses the same YAML setup for training, evaluation, image prediction,
-and video prediction. Choose a preset, run it through the CLI, Python API, or
-web app, and keep the same configuration across the workflow.
+Choose a preset and use it through the CLI, Python API, or web app.
 
 > SegCraft is alpha software. Its Python API and configuration schema can still
 > change.
@@ -34,7 +32,8 @@ segcraft-web          # open http://127.0.0.1:8000
 Upload a video or provide a YouTube URL, choose a preset, and download the
 original, overlay, and side-by-side output videos. By default,
 `runtime.device: auto` uses an NVIDIA GPU when a CUDA-enabled PyTorch build is
-available and falls back to CPU otherwise.
+available and falls back to CPU otherwise. The first prediction may download
+pretrained model weights; choose `pascal_fast_video` for a smaller model.
 
 From a checkout, the launchers set up the environment and open the app:
 
@@ -50,8 +49,6 @@ to confirm what Torch and CUDA can see.
 
 ## What it does
 
-- Train, evaluate, and predict with one configuration merge order: base YAML,
-  optional preset, then optional local overrides.
 - Use TorchVision, segmentation-models-pytorch, or Hugging Face SegFormer
   models through one interface.
 - Run image or video prediction. Video output includes `original.mp4`,
@@ -62,6 +59,10 @@ to confirm what Torch and CUDA can see.
 
 ## Common commands
 
+`segcraft validate` works with the packaged defaults. For the other examples,
+first copy `configs/local.example.yaml` to `configs/local.yaml` and set your
+machine-specific paths; an explicitly supplied local config must exist.
+
 ```bash
 segcraft validate
 segcraft predict --preset cityscapes_video --local configs/local.yaml
@@ -69,8 +70,7 @@ segcraft train --preset fast_dev --local configs/local.yaml
 segcraft evaluate --preset quality --local configs/local.yaml
 ```
 
-`configs/local.yaml` is for machine-specific paths and is ignored by Git.
-Start from `configs/local.example.yaml`.
+`configs/local.yaml` is ignored by Git.
 
 Useful presets include `fast_dev` for a small CPU training run,
 `binary_quickstart` for foreground/background work, and the Cityscapes,
@@ -79,11 +79,16 @@ trainable model head; `task.class_names` only controls display labels.
 
 ## Python and notebooks
 
+After installing `segcraft[web]`, supply your own video path. The first run may
+download the preset's pretrained weights:
+
 ```python
 from segcraft import load_config
 from segcraft.prediction import run_prediction
 
-config = load_config("configs/base.yaml", preset_path="cityscapes_video")
+config = load_config(preset_path="cityscapes_video")
+config["predict"]["input_path"] = "path/to/your/video.mp4"
+config["predict"]["output_path"] = "outputs/prediction"
 summary = run_prediction(config)
 ```
 

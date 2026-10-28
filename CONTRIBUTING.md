@@ -46,6 +46,9 @@ pull request, including the launcher helpers under Windows PowerShell 5.1.
 - Do not commit local paths, datasets, outputs, downloaded weights, build artifacts, notebook
   output, or large generated media. `configs/local.yaml` is ignored for exactly this reason.
 - Add a line to `CHANGELOG.md` under "Unreleased" for any change a user could notice.
+- Before a release, move those entries into a versioned changelog section. The
+  release workflow uses that section for user-facing notes before the generated
+  pull-request list and fails early if it is missing.
 
 ## Reporting problems
 

@@ -2,11 +2,28 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from importlib.resources import as_file, files
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Iterator
 
 from .schema import SegCraftConfig, parse_config, validate_config
+
+
+@contextmanager
+def resolve_config_path(config_path: str | Path | None = None) -> Iterator[Path]:
+    """Resolve a base config for both source checkouts and installed packages."""
+    if config_path is not None:
+        yield Path(config_path)
+        return
+
+    local_default = Path("configs/base.yaml")
+    if local_default.exists():
+        yield local_default
+        return
+
+    with as_file(files("segcraft.templates").joinpath("base.yaml")) as packaged_default:
+        yield packaged_default
 
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
@@ -79,19 +96,20 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any
 
 
 def _load_merged_config(
-    config_path: str | Path,
+    config_path: str | Path | None,
     preset_path: str | Path | None = None,
     local_path: str | Path | None = None,
 ) -> Dict[str, Any]:
     """Load base config, then optional preset/local overlays."""
-    config = _load_yaml(Path(config_path))
+    with resolve_config_path(config_path) as resolved:
+        config = _load_yaml(resolved)
 
     if preset_path:
         # Friendly behavior: missing preset should fail fast so users don't silently run defaults.
         preset_cfg = _load_preset_yaml(preset_path)
         config = _deep_merge(config, preset_cfg)
 
-    if local_path and Path(local_path).exists():
+    if local_path is not None:
         local_cfg = _load_yaml(Path(local_path))
         config = _deep_merge(config, local_cfg)
 
@@ -99,7 +117,7 @@ def _load_merged_config(
 
 
 def load_and_validate_config(
-    config_path: str | Path,
+    config_path: str | Path | None = None,
     preset_path: str | Path | None = None,
     local_path: str | Path | None = None,
 ) -> Dict[str, Any]:
@@ -110,7 +128,7 @@ def load_and_validate_config(
 
 
 def load_config_object(
-    config_path: str | Path,
+    config_path: str | Path | None = None,
     preset_path: str | Path | None = None,
     local_path: str | Path | None = None,
 ) -> SegCraftConfig:

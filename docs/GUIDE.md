@@ -73,6 +73,10 @@ launch SegCraft from the environment where Torch can see CUDA, or keep
 
 ## CLI
 
+`segcraft validate` works with the packaged defaults. Before running the other
+examples, copy `configs/local.example.yaml` to `configs/local.yaml` and set
+your machine-specific paths.
+
 ```bash
 segcraft validate
 segcraft predict --preset cityscapes_video --local configs/local.yaml
@@ -81,7 +85,9 @@ segcraft evaluate --preset quality --local configs/local.yaml
 ```
 
 `configs/local.yaml` is for machine-specific paths and is ignored by git.
-Start from `configs/local.example.yaml`.
+The CLI automatically applies it if present. A path explicitly supplied with
+`--local` must exist; omit `--local`
+if you do not need overrides.
 
 ## Web App
 
@@ -131,12 +137,20 @@ from segcraft.prediction import run_prediction
 
 print(list_available_presets())
 
-config = load_config("configs/base.yaml", preset_path="cityscapes_video")
-typed = load_config_object("configs/base.yaml", preset_path="cityscapes_video")
+config = load_config(preset_path="cityscapes_video")
+typed = load_config_object(preset_path="cityscapes_video")
 
+config["predict"]["input_path"] = "path/to/your/video.mp4"
+config["predict"]["output_path"] = "outputs/prediction"
 events = []
 summary = run_prediction(config, progress_callback=events.append)
 ```
+
+Without a config path, the API uses `configs/base.yaml` from the current
+directory when present, otherwise the installed package's base configuration.
+Pass `local_path=` explicitly to apply machine-specific overrides.
+Prediction requires the appropriate model/video extras and a valid input; the
+first run may download pretrained weights.
 
 ## Outputs
 

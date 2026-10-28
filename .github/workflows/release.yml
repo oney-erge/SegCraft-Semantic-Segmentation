@@ -54,6 +54,8 @@ jobs:
               echo "Tag ${release_tag} does not match package version ${package_version}." >&2
               exit 1
             }
+            # Fail before publishing if the user-facing changelog is missing.
+            python scripts/release_notes.py "$package_version" > /dev/null
           fi
           python -m build
           twine check dist/*
@@ -153,4 +155,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           (cd dist && sha256sum *.whl *.tar.gz > SHA256SUMS)
-          gh release create "${RELEASE_TAG}" dist/* --repo "${GITHUB_REPOSITORY}" --generate-notes --title "SegCraft ${RELEASE_TAG}"
+          python scripts/release_notes.py "${RELEASE_TAG#v}" > "$RUNNER_TEMP/segcraft-release-notes.md"
+          gh release create "${RELEASE_TAG}" dist/* --repo "${GITHUB_REPOSITORY}" --generate-notes --notes-file "$RUNNER_TEMP/segcraft-release-notes.md" --title "SegCraft ${RELEASE_TAG}"
