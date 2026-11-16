@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "repository": {"id": "oney-erge/SegCraft-Semantic-Segmentation", "owner": "oney-erge", "maintenance": "unclassified", "interfaces": ["browser-ui", "api", "cli"]},
+  "capabilities": ["async-jobs", "ml-research"],
+  "components": [{"id": "package", "root": "src/segcraft"}],
+  "environment": {"source": "pyproject.toml", "real_prediction_requires": ["supported model", "input data", "optional dependencies"]},
+  "checks": {
+    "config": {"argv": ["python", "-m", "pytest", "tests/test_schema.py", "tests/test_merge.py", "-q"], "cwd": ".", "timeout_seconds": 180, "lane": "fast", "effects": "local-test-files"},
+    "web": {"argv": ["python", "-m", "pytest", "tests/test_webapp.py", "-q"], "cwd": ".", "timeout_seconds": 180, "lane": "journey", "effects": "local-test-files"}
+  },
+  "journeys": [{"id": "predict-and-download", "user_outcome": "Predict from an input and inspect a valid output", "checks": ["config", "web"], "additional_evidence_needed": ["reconnect without resubmission", "interrupted publication", "checkpoint continuation", "real model and video smoke"]}],
+  "evidence": {"status": "not-collected-by-repoctl", "note": "Fixtures do not prove real model or video execution."},
+  "agent": {"instruction_entry": "AGENTS.md", "command_trust": "external-to-repository"}
+}

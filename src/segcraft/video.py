@@ -260,11 +260,12 @@ def mux_audio_from_source(
         pass
 
     preserved = _has_audio(output_path)
-    message = (
-        "Source audio was muxed into the overlay video."
-        if preserved
-        else "No readable source audio stream was found; wrote the overlay video without audio."
-    )
+    if preserved is None:
+        message = "Audio preservation could not be verified; ffprobe was unavailable or failed."
+    elif preserved:
+        message = "Source audio was muxed into the overlay video."
+    else:
+        message = "No readable source audio stream was found; wrote the overlay video without audio."
     return {
         "status": "completed",
         "preserved": preserved,

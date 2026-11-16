@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,6 +36,8 @@ def run_training(config: SegCraftConfig) -> dict[str, Any]:
     history = []
     best_score = float("-inf")
     start_epoch = 1
+    stale_epochs = 0
+    resume_early_stopping_state = None
     checkpoint_dir = Path(config.runtime.output_dir) / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     best_checkpoint = checkpoint_dir / "best.pt"
@@ -54,9 +58,15 @@ def run_training(config: SegCraftConfig) -> dict[str, Any]:
         start_epoch = int(resume_state.get("epoch", 0)) + 1
         best_score = float(resume_state.get("best_score", resume_state.get("score", best_score)))
         history = list(resume_state.get("history", []))
+        if "stale_epochs" in resume_state:
+            stale_epochs = int(resume_state["stale_epochs"])
+            resume_early_stopping_state = "restored"
+        else:
+            # Older checkpoints never recorded this counter; do not imply an
+            # exact continuation when that information is unavailable.
+            resume_early_stopping_state = "unavailable_in_legacy_checkpoint"
 
     stopped_early = False
-    stale_epochs = 0
 
     for epoch in range(start_epoch, config.train.epochs + 1):
         model.train()
@@ -96,7 +106,7 @@ def run_training(config: SegCraftConfig) -> dict[str, Any]:
         if improved:
             best_score = score
             stale_epochs = 0
-            torch.save(
+            _save_checkpoint(
                 _checkpoint_payload(
                     model=model,
                     optimizer=optimizer,
@@ -107,14 +117,16 @@ def run_training(config: SegCraftConfig) -> dict[str, Any]:
                     score=score,
                     best_score=best_score,
                     history=history,
+                    stale_epochs=stale_epochs,
                 ),
                 best_checkpoint,
+                torch,
             )
         else:
             stale_epochs += 1
 
         _step_scheduler(scheduler, score)
-        torch.save(
+        _save_checkpoint(
             _checkpoint_payload(
                 model=model,
                 optimizer=optimizer,
@@ -125,8 +137,10 @@ def run_training(config: SegCraftConfig) -> dict[str, Any]:
                 score=score,
                 best_score=best_score,
                 history=history,
+                stale_epochs=stale_epochs,
             ),
             last_checkpoint,
+            torch,
         )
         _write_json(history_path, history)
 
@@ -149,6 +163,7 @@ def run_training(config: SegCraftConfig) -> dict[str, Any]:
         "scheduler": config.train.scheduler,
         "amp_enabled": amp_enabled,
         "resumed_from": config.train.resume_from,
+        "resume_early_stopping_state": resume_early_stopping_state,
         "stopped_early": stopped_early,
         "history": history,
     }
@@ -348,8 +363,10 @@ def _checkpoint_payload(
     score: float,
     best_score: float,
     history: list[dict[str, Any]],
+    stale_epochs: int,
 ) -> dict[str, Any]:
     payload = {
+        "checkpoint_version": 2,
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
         "config": config.to_dict(),
@@ -357,6 +374,7 @@ def _checkpoint_payload(
         "score": score,
         "best_score": best_score,
         "history": history,
+        "stale_epochs": stale_epochs,
         "saved_at_utc": datetime.now(timezone.utc).isoformat(),
     }
     if scheduler is not None:
@@ -364,6 +382,18 @@ def _checkpoint_payload(
     if scaler is not None:
         payload["scaler_state_dict"] = scaler.state_dict()
     return payload
+
+
+def _save_checkpoint(payload: dict[str, Any], path: Path, torch: Any) -> None:
+    """Replace a checkpoint only after a complete write in the same directory."""
+    descriptor, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    os.close(descriptor)
+    pending = Path(name)
+    try:
+        torch.save(payload, pending)
+        os.replace(pending, path)
+    finally:
+        pending.unlink(missing_ok=True)
 
 
 def _load_checkpoint(

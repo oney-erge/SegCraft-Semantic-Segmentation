@@ -11,6 +11,8 @@ the ignored machine-specific `configs/local.yaml`. Package code lives under
 `src/segcraft/`; tests live under `tests/`; notebooks are examples, not the
 canonical implementation.
 
+See `docs/STATE_MACHINES.md` for web job, artifact, and checkpoint boundaries.
+
 ## Commands
 
 Development:

@@ -1,4 +1,7 @@
 import json
+from types import SimpleNamespace
+
+import pytest
 
 import segcraft.video as video
 
@@ -17,6 +20,45 @@ def test_is_video_file_uses_known_suffixes():
     assert video.is_video_file("clip.mp4")
     assert video.is_video_file("clip.MOV")
     assert not video.is_video_file("frame.jpg")
+
+
+@pytest.mark.parametrize(
+    ("probe_result", "expected_preserved", "message_fragment"),
+    [
+        ("audio", True, "Source audio was muxed"),
+        ("", False, "No readable source audio stream"),
+        (None, None, "could not be verified"),
+        ("probe_failed", None, "could not be verified"),
+    ],
+)
+def test_mux_audio_reports_probe_uncertainty(
+    tmp_path, monkeypatch, probe_result, expected_preserved, message_fragment
+):
+    source = tmp_path / "source.mp4"
+    silent = tmp_path / "silent.mp4"
+    output = tmp_path / "output.mp4"
+    silent.write_bytes(b"silent")
+    monkeypatch.setattr(
+        video.shutil,
+        "which",
+        lambda name: None if name == "ffprobe" and probe_result is None else name,
+    )
+
+    def fake_run(command, **kwargs):
+        if command[0] == "ffmpeg":
+            output.write_bytes(b"muxed")
+            return SimpleNamespace(returncode=0, stdout="")
+        if probe_result == "probe_failed":
+            return SimpleNamespace(returncode=1, stdout="")
+        return SimpleNamespace(returncode=0, stdout=probe_result)
+
+    monkeypatch.setattr(video.subprocess, "run", fake_run)
+    result = video.mux_audio_from_source(source, silent, output)
+
+    assert result["status"] == "completed"
+    assert result["preserved"] is expected_preserved
+    assert message_fragment in result["message"]
+    assert output.read_bytes() == b"muxed"
 
 
 def test_download_youtube_reuses_matching_output(tmp_path, monkeypatch):

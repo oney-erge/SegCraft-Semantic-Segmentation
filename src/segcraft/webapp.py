@@ -3,9 +3,12 @@
 import argparse
 import copy
 from html import escape
+import json
 import os
+import re
 import shutil
 import socket
+import tempfile
 import threading
 import time
 import urllib.request
@@ -19,11 +22,12 @@ from segcraft.config.loader import list_available_presets, load_and_validate_con
 from segcraft.cli.main import resolve_config_path
 from segcraft.prediction import PredictionCancelled, run_prediction
 from segcraft.runtime import INSTALL_HINTS, collect_runtime_diagnostics
-from segcraft.video import DownloadCancelled, download_youtube
+from segcraft.video import DownloadCancelled, download_youtube, verify_video
 
 
 JOBS: dict[str, dict[str, Any]] = {}
 JOBS_LOCK = threading.RLock()
+RECOVERED_ROOTS: set[str] = set()
 DEFAULT_WORK_DIR = Path("outputs/web")
 DEFAULT_DOWNLOAD_CACHE_DIR = DEFAULT_WORK_DIR / "download_cache"
 DOWNLOADABLE_FILES = ("comparison.mp4", "overlay.mp4", "original.mp4", "summary.json")
@@ -38,6 +42,7 @@ def create_app():
             f"The web app requires optional dependencies. {INSTALL_HINTS['app']}"
         ) from exc
 
+    _recover_jobs()
     app = FastAPI(title="SegCraft")
 
     @app.get("/health")
@@ -75,15 +80,30 @@ def create_app():
         job_dir = DEFAULT_WORK_DIR / "jobs" / job_id
         input_dir = job_dir / "input"
         output_dir = job_dir / "output"
-        input_dir.mkdir(parents=True, exist_ok=True)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        # Admission and reservation are one decision. This web app owns one
+        # resource-heavy job in a single server process; other submissions get
+        # a clear busy response instead of starting another model concurrently.
+        with JOBS_LOCK:
+            if any(job.get("status") in {"queued", "running", "canceling"} for job in JOBS.values()):
+                raise HTTPException(status_code=409, detail="Another prediction is running. Wait or stop it first.")
+            input_dir.mkdir(parents=True, exist_ok=True)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            _set_job(
+                job_id, id=job_id, status="queued", cancel_requested=False,
+                progress={"stage": "queued", "completed": 0, "total": None, "percent": 0, "message": "Queued"},
+                output_dir=str(output_dir), downloads={}, _persistent=True,
+            )
 
         input_path = None
-        if video_file is not None and video_file.filename:
-            safe_name = Path(video_file.filename).name
-            input_path = input_dir / safe_name
-            with input_path.open("wb") as handle:
-                shutil.copyfileobj(video_file.file, handle)
+        try:
+            if video_file is not None and video_file.filename:
+                safe_name = Path(video_file.filename).name
+                input_path = input_dir / safe_name
+                with input_path.open("wb") as handle:
+                    shutil.copyfileobj(video_file.file, handle)
+        except Exception as exc:
+            _set_job(job_id, status="failed", error=str(exc), progress={"stage": "failed", "message": str(exc)})
+            raise
 
         params = {
             "job_id": job_id,
@@ -101,15 +121,6 @@ def create_app():
             "frame_stride": max(int(frame_stride), 1),
             "preserve_audio": bool(preserve_audio),
         }
-        _set_job(
-            job_id,
-            id=job_id,
-            status="queued",
-            cancel_requested=False,
-            progress={"stage": "queued", "completed": 0, "total": None, "percent": 0, "message": "Queued"},
-            output_dir=str(output_dir),
-            downloads={},
-        )
         background_tasks.add_task(_run_job, params)
         return {"job_id": job_id}
 
@@ -121,22 +132,7 @@ def create_app():
 
     @app.post("/jobs/{job_id}/cancel")
     def cancel_job(job_id: str) -> dict[str, Any]:
-        job = _get_job(job_id)
-        if job.get("status") in {"completed", "failed", "canceled"}:
-            return {"job_id": job_id, "status": job.get("status", "unknown")}
-        _set_job(
-            job_id,
-            status="canceling",
-            cancel_requested=True,
-            progress={
-                "stage": "canceling",
-                "completed": 0,
-                "total": None,
-                "percent": None,
-                "message": "Stopping job",
-            },
-        )
-        return {"job_id": job_id, "status": "canceling"}
+        return {"job_id": job_id, "status": _request_cancel(job_id)}
 
     @app.get("/jobs/{job_id}/download/{filename}")
     def download(job_id: str, filename: str):
@@ -145,7 +141,7 @@ def create_app():
         job = _get_job(job_id)
         output_dir = Path(job["output_dir"])
         path = output_dir / filename
-        if not path.exists():
+        if job.get("status") != "completed" or not _artifact_is_current(job, filename, path):
             raise HTTPException(status_code=404, detail="Artifact not ready")
         return FileResponse(path, filename=filename)
 
@@ -155,13 +151,14 @@ def create_app():
 def _run_job(params: dict[str, Any]) -> None:
     job_id = params["job_id"]
     try:
-        _set_job(job_id, status="running")
-        _raise_if_job_cancelled(job_id)
+        with JOBS_LOCK:
+            _raise_if_job_cancelled(job_id)
+            _set_job(job_id, status="running")
         input_path = params.get("input_path")
         if params.get("youtube_url"):
-            _set_job(
+            _update_job_progress(
                 job_id,
-                progress={
+                {
                     "stage": "downloading",
                     "completed": 0,
                     "total": None,
@@ -182,51 +179,14 @@ def _run_job(params: dict[str, Any]) -> None:
         cfg = _job_config(params, input_path)
         summary = run_prediction(
             cfg,
-            progress_callback=lambda event: _set_job(job_id, progress=event),
+            progress_callback=lambda event: _update_job_progress(job_id, event),
             should_stop=lambda: _job_cancel_requested(job_id),
         )
-        _raise_if_job_cancelled(job_id)
-        _set_job(
-            job_id,
-            status="completed",
-            cancel_requested=False,
-            summary=summary,
-            progress={
-                "stage": "completed",
-                "completed": summary.get("frames_processed", summary.get("images_processed", 1)),
-                "total": summary.get("frames_processed", summary.get("images_processed", 1)),
-                "percent": 100,
-                "message": "Prediction complete",
-            },
-        )
+        _finish_job(job_id, summary)
     except (DownloadCancelled, PredictionCancelled, _JobCancelled) as exc:
-        _set_job(
-            job_id,
-            status="canceled",
-            cancel_requested=False,
-            error=str(exc),
-            progress={
-                "stage": "canceled",
-                "completed": 0,
-                "total": None,
-                "percent": None,
-                "message": "Job canceled",
-            },
-        )
+        _record_terminal_failure(job_id, "canceled", str(exc))
     except Exception as exc:  # pragma: no cover - exercised by real app failures
-        _set_job(
-            job_id,
-            status="failed",
-            cancel_requested=False,
-            error=str(exc),
-            progress={
-                "stage": "failed",
-                "completed": 0,
-                "total": None,
-                "percent": 0,
-                "message": str(exc),
-            },
-        )
+        _record_terminal_failure(job_id, "failed", str(exc))
 
 
 def _job_config(params: dict[str, Any], input_path: str | None) -> dict[str, Any]:
@@ -263,8 +223,130 @@ def _resolve_preset(params: dict[str, Any]) -> str | None:
 
 def _set_job(job_id: str, **updates: Any) -> None:
     with JOBS_LOCK:
-        job = JOBS.setdefault(job_id, {"id": job_id})
-        job.update(updates)
+        previous = JOBS.get(job_id)
+        job = {**(previous or {"id": job_id}), **updates}
+        if job.get("_persistent"):
+            _write_job_manifest(job_id, job)
+        JOBS[job_id] = job
+
+
+def _record_terminal_failure(job_id: str, status: str, error: str) -> None:
+    try:
+        with JOBS_LOCK:
+            # Cancellation and the terminal failure share the same decision
+            # boundary, so an accepted stop cannot be overwritten by a stale read.
+            if JOBS.get(job_id, {}).get("cancel_requested"):
+                status = "canceled"
+            progress = {
+                "stage": status, "completed": 0, "total": None, "percent": None,
+                "message": "Job canceled" if status == "canceled" else error,
+            }
+            _set_job(job_id, status=status, cancel_requested=False, error=error, progress=progress)
+    except OSError as exc:
+        # The durable nonterminal state will reconcile as interrupted on restart.
+        with JOBS_LOCK:
+            JOBS[job_id] = {
+                **JOBS.get(job_id, {"id": job_id}), "status": "failed",
+                "cancel_requested": False, "error": f"Could not save job state: {exc}",
+                "progress": {"stage": "failed", "percent": None, "message": "Could not save job state."},
+            }
+
+
+def _write_job_manifest(job_id: str, job: dict[str, Any]) -> None:
+    directory = DEFAULT_WORK_DIR / "jobs" / job_id
+    descriptor, name = tempfile.mkstemp(prefix=".job-", suffix=".tmp", dir=directory)
+    pending = Path(name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(job, handle, ensure_ascii=False)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(pending, directory / "job.json")
+    finally:
+        pending.unlink(missing_ok=True)
+
+
+def _recover_jobs() -> None:
+    """Reconcile saved jobs once at startup; never restart their work."""
+    with JOBS_LOCK:
+        root = str(DEFAULT_WORK_DIR.resolve())
+        if root in RECOVERED_ROOTS:
+            return
+        for path in (DEFAULT_WORK_DIR / "jobs").glob("*/job.json"):
+            _load_saved_job(path.parent.name)
+        RECOVERED_ROOTS.add(root)
+
+
+def _load_saved_job(job_id: str) -> dict[str, Any] | None:
+    if not re.fullmatch(r"[0-9a-f]{12}", job_id):
+        return None
+    if job_id in JOBS:
+        return JOBS[job_id]
+    directory = DEFAULT_WORK_DIR / "jobs" / job_id
+    try:
+        job = json.loads((directory / "job.json").read_text(encoding="utf-8"))
+        if not isinstance(job, dict) or job.get("id") != job_id:
+            return None
+        if Path(job["output_dir"]).resolve() != (directory / "output").resolve():
+            return None
+        if job.get("status") not in {"queued", "running", "canceling", "completed", "failed", "canceled", "interrupted"}:
+            return None
+        job["_persistent"] = True
+        if job["status"] in {"queued", "running", "canceling"}:
+            job.update(
+                status="interrupted", cancel_requested=False,
+                progress={"stage": "interrupted", "percent": None,
+                          "message": "The server stopped before this job finished. Start a new job to retry."},
+            )
+            _write_job_manifest(job_id, job)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    JOBS[job_id] = job
+    return job
+
+
+def _request_cancel(job_id: str) -> str:
+    """Accept cancellation atomically against the terminal completion decision."""
+    with JOBS_LOCK:
+        job = _get_job(job_id)
+        if job.get("status") in {"completed", "failed", "canceled", "canceling", "interrupted"}:
+            return job["status"]
+        _set_job(
+            job_id,
+            status="canceling",
+            cancel_requested=True,
+            progress={
+                "stage": "canceling", "completed": 0, "total": None,
+                "percent": None, "message": "Stopping job",
+            },
+        )
+        return "canceling"
+
+
+def _update_job_progress(job_id: str, progress: dict[str, Any]) -> None:
+    with JOBS_LOCK:
+        job = _get_job(job_id)
+        if not job.get("cancel_requested") and job.get("status") == "running":
+            _set_job(job_id, progress=progress)
+
+
+def _finish_job(job_id: str, summary: dict[str, Any]) -> None:
+    """A prior accepted cancel wins; a later cancel observes completed."""
+    artifacts = _verify_artifacts(Path(_get_job(job_id)["output_dir"]))
+    with JOBS_LOCK:
+        _raise_if_job_cancelled(job_id)
+        count = summary.get("frames_processed", summary.get("images_processed", 1))
+        _set_job(
+            job_id,
+            status="completed",
+            cancel_requested=False,
+            summary=summary,
+            artifacts=artifacts,
+            progress={
+                "stage": "completed", "completed": count, "total": count,
+                "percent": 100, "message": "Prediction complete",
+            },
+        )
 
 
 def _job_cancel_requested(job_id: str) -> bool:
@@ -283,7 +365,7 @@ def _raise_if_job_cancelled(job_id: str) -> None:
 
 def _get_job(job_id: str) -> dict[str, Any]:
     with JOBS_LOCK:
-        if job_id not in JOBS:
+        if job_id not in JOBS and _load_saved_job(job_id) is None:
             try:
                 from fastapi import HTTPException
             except ModuleNotFoundError:
@@ -294,12 +376,41 @@ def _get_job(job_id: str) -> dict[str, Any]:
 
 def _download_links(job_id: str) -> dict[str, str]:
     job = _get_job(job_id)
+    if job.get("status") != "completed":
+        return {}
     output_dir = Path(job["output_dir"])
     links = {}
     for filename in DOWNLOADABLE_FILES:
-        if (output_dir / filename).exists():
+        if _artifact_is_current(job, filename, output_dir / filename):
             links[filename] = f"/jobs/{job_id}/download/{filename}"
     return links
+
+
+def _verify_artifacts(output_dir: Path) -> dict[str, dict[str, int]]:
+    """Verify closed outputs before recording the list offered to clients."""
+    artifacts = {}
+    for filename in DOWNLOADABLE_FILES:
+        path = output_dir / filename
+        if not path.is_file():
+            continue
+        if filename.endswith(".json"):
+            json.loads(path.read_text(encoding="utf-8"))
+        else:
+            verify_video(path)
+        stat = path.stat()
+        artifacts[filename] = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns}
+    return artifacts
+
+
+def _artifact_is_current(job: dict[str, Any], filename: str, path: Path) -> bool:
+    expected = (job.get("artifacts") or {}).get(filename)
+    if not isinstance(expected, dict):
+        return False
+    try:
+        stat = path.stat()
+        return path.is_file() and stat.st_size == expected.get("size") and stat.st_mtime_ns == expected.get("mtime_ns")
+    except OSError:
+        return False
 
 
 def _index_html() -> str:
@@ -379,39 +490,84 @@ def _index_html() -> str:
     let timer = null;
     let currentJobId = null;
 
+    function rememberJob(id) {
+      try {
+        if (id) sessionStorage.setItem('segcraft-job-id', id);
+        else sessionStorage.removeItem('segcraft-job-id');
+      } catch (_) { /* Storage can be unavailable in private browser sessions. */ }
+    }
+
+    function savedJob() {
+      try { return sessionStorage.getItem('segcraft-job-id'); }
+      catch (_) { return null; }
+    }
+
     loadRuntime();
+    const previousJob = savedJob();
+    if (previousJob) {
+      currentJobId = previousJob;
+      submit.disabled = true;
+      poll(previousJob);
+    }
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       submit.disabled = true;
       downloadsEl.innerHTML = '';
-      const response = await fetch('/jobs', { method: 'POST', body: new FormData(form) });
-      if (!response.ok) {
-        messageEl.textContent = await response.text();
+      try {
+        const response = await fetch('/jobs', { method: 'POST', body: new FormData(form) });
+        if (!response.ok) throw new Error(await response.text());
+        const payload = await response.json();
+        currentJobId = payload.job_id;
+        rememberJob(currentJobId);
+        cancel.disabled = false;
+        poll(currentJobId);
+      } catch (error) {
+        messageEl.textContent = `Could not start job: ${error.message || error}`;
         submit.disabled = false;
-        return;
       }
-      const payload = await response.json();
-      currentJobId = payload.job_id;
-      cancel.disabled = false;
-      poll(currentJobId);
-      timer = setInterval(() => poll(currentJobId), 1000);
     });
 
     cancel.addEventListener('click', async () => {
       if (!currentJobId) return;
       cancel.disabled = true;
-      await fetch(`/jobs/${currentJobId}/cancel`, { method: 'POST' });
-      messageEl.textContent = 'Stopping job...';
+      try {
+        const response = await fetch(`/jobs/${currentJobId}/cancel`, { method: 'POST' });
+        if (!response.ok) throw new Error(await response.text());
+        messageEl.textContent = 'Stopping job...';
+      } catch (error) {
+        messageEl.textContent = `Could not request stop: ${error.message || error}`;
+        cancel.disabled = false;
+      }
     });
 
     async function poll(jobId) {
-      const response = await fetch(`/jobs/${jobId}`);
-      const job = await response.json();
+      if (!jobId || jobId !== currentJobId) return;
+      let job;
+      try {
+        const response = await fetch(`/jobs/${jobId}`);
+        if (response.status === 404) {
+          rememberJob(null);
+          currentJobId = null;
+          submit.disabled = false;
+          cancel.disabled = true;
+          messageEl.textContent = 'This job is no longer available.';
+          return;
+        }
+        if (!response.ok) throw new Error(await response.text());
+        job = await response.json();
+      } catch (_) {
+        if (jobId === currentJobId) {
+          messageEl.textContent = 'Connection lost; reconnecting to the last observed job...';
+          timer = setTimeout(() => poll(jobId), 2000);
+        }
+        return;
+      }
+      if (jobId !== currentJobId) return;
       const progress = job.progress || {};
       const percent = progress.percent ?? 0;
       statusEl.textContent = job.status || 'unknown';
-      percentEl.textContent = `${Math.round(percent)}%`;
+      percentEl.textContent = progress.percent == null ? '—' : `${Math.round(percent)}%`;
       fillEl.style.width = `${percent}%`;
       messageEl.textContent = progress.message || '';
       downloadsEl.innerHTML = '';
@@ -421,11 +577,14 @@ def _index_html() -> str:
         link.textContent = `Download ${name}`;
         downloadsEl.appendChild(link);
       });
-      if (job.status === 'completed' || job.status === 'failed' || job.status === 'canceled') {
-        clearInterval(timer);
+      if (['completed', 'failed', 'canceled', 'interrupted'].includes(job.status)) {
+        clearTimeout(timer);
         submit.disabled = false;
         cancel.disabled = true;
         currentJobId = null;
+      } else {
+        cancel.disabled = job.status === 'canceling';
+        timer = setTimeout(() => poll(jobId), 1000);
       }
     }
 
