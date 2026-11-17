@@ -245,10 +245,17 @@ def _record_terminal_failure(job_id: str, status: str, error: str) -> None:
     except OSError as exc:
         # The durable nonterminal state will reconcile as interrupted on restart.
         with JOBS_LOCK:
+            current = JOBS.get(job_id, {"id": job_id})
+            final_status = "canceled" if status == "canceled" or current.get("cancel_requested") else "failed"
             JOBS[job_id] = {
-                **JOBS.get(job_id, {"id": job_id}), "status": "failed",
-                "cancel_requested": False, "error": f"Could not save job state: {exc}",
-                "progress": {"stage": "failed", "percent": None, "message": "Could not save job state."},
+                **current, "status": final_status,
+                "cancel_requested": False,
+                "error": f"Could not save job state ({type(exc).__name__}); the saved record may be stale.",
+                "progress": {
+                    "stage": final_status, "percent": None,
+                    "message": "Job canceled, but final state could not be saved." if final_status == "canceled"
+                    else "Could not save job state.",
+                },
             }
 
 

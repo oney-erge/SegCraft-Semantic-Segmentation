@@ -347,6 +347,68 @@ def test_manifest_write_failure_does_not_report_completed(tmp_path, monkeypatch)
     assert "Could not save job state" in job["error"]
 
 
+@pytest.mark.parametrize("terminal_status", ["failed", "canceled"])
+def test_accepted_cancel_survives_final_state_storage_failure(tmp_path, monkeypatch, terminal_status):
+    from fastapi.testclient import TestClient
+
+    from segcraft import webapp
+
+    monkeypatch.setattr(webapp, "DEFAULT_WORK_DIR", tmp_path)
+    job_id = "abcdef012348"
+    output = tmp_path / "jobs" / job_id / "output"
+    output.mkdir(parents=True)
+    with webapp.JOBS_LOCK:
+        webapp.JOBS.clear()
+        webapp._set_job(job_id, id=job_id, status="running", cancel_requested=False,
+                        output_dir=str(output), _persistent=True)
+    client = TestClient(webapp.create_app())
+    assert client.post(f"/jobs/{job_id}/cancel").json()["status"] == "canceling"
+    original_write = webapp._write_job_manifest
+
+    def fail_write(*_args):
+        raise OSError("synthetic-private-storage-detail")
+
+    monkeypatch.setattr(webapp, "_write_job_manifest", fail_write)
+    webapp._record_terminal_failure(job_id, terminal_status, "synthetic worker outcome")
+    visible = client.get(f"/jobs/{job_id}").json()
+    assert visible["status"] == "canceled"
+    assert "could not save" in visible["error"].lower()
+    assert "synthetic-private-storage-detail" not in visible["error"]
+    assert visible["downloads"] == {}
+
+    # A failed durable write cannot claim that the final state survived restart.
+    monkeypatch.setattr(webapp, "_write_job_manifest", original_write)
+    with webapp.JOBS_LOCK:
+        webapp.JOBS.clear()
+    recovered = webapp._get_job(job_id)
+    assert recovered["status"] == "interrupted"
+
+
+def test_cancel_observed_during_failed_terminal_write_is_not_overwritten(tmp_path, monkeypatch):
+    from segcraft import webapp
+
+    monkeypatch.setattr(webapp, "DEFAULT_WORK_DIR", tmp_path)
+    job_id = "abcdef012349"
+    output = tmp_path / "jobs" / job_id / "output"
+    output.mkdir(parents=True)
+    with webapp.JOBS_LOCK:
+        webapp.JOBS.clear()
+        webapp._set_job(job_id, id=job_id, status="running", cancel_requested=False,
+                        output_dir=str(output), _persistent=True)
+    original_write = webapp._write_job_manifest
+
+    def cancel_then_fail(current_id, state):
+        if state.get("status") == "failed":
+            assert webapp._request_cancel(current_id) == "canceling"
+            raise OSError("synthetic failure")
+        original_write(current_id, state)
+
+    monkeypatch.setattr(webapp, "_write_job_manifest", cancel_then_fail)
+    webapp._record_terminal_failure(job_id, "failed", "worker failed")
+    assert webapp._get_job(job_id)["status"] == "canceled"
+    assert "could not save" in webapp._get_job(job_id)["error"].lower()
+
+
 def test_web_help_prints_usage_and_does_not_start_a_server(monkeypatch, capsys):
     import pytest
     from segcraft import webapp
