@@ -26,15 +26,21 @@ function Enter-InstallLock {
   while ([DateTime]::UtcNow -lt $deadline) {
     try {
       $stream = [IO.File]::Open($path, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    } catch [IO.IOException] {
+      Start-Sleep -Milliseconds 250
+      continue
+    }
+    try {
       $stream.SetLength(0)
       $bytes = [Text.Encoding]::UTF8.GetBytes("pid=$PID`nstarted=$([DateTimeOffset]::Now.ToString('o'))`n")
       $stream.Write($bytes, 0, $bytes.Length)
       $stream.Flush()
-      $script:InstallLock = $stream
       Add-InstallLog "lock acquired"
+      $script:InstallLock = $stream
       return
-    } catch [IO.IOException] {
-      Start-Sleep -Milliseconds 250
+    } catch {
+      $stream.Dispose()
+      throw
     }
   }
   throw "Another $script:InstallProduct installation is still running. Wait for it to finish, then retry. Lock: $path"
